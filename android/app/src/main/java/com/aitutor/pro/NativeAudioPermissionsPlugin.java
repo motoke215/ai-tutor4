@@ -28,12 +28,12 @@ import java.util.Locale;
 import java.util.UUID;
 
 @CapacitorPlugin(
-    name = "NativeVoice",
+    name = "NativeAudioPermissions",
     permissions = {
         @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = "microphone")
     }
 )
-public class NativeVoicePlugin extends Plugin {
+public class NativeAudioPermissionsPlugin extends Plugin {
     private TextToSpeech textToSpeech;
     private SpeechRecognizer speechRecognizer;
     private boolean ttsReady = false;

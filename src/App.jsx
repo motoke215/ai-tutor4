@@ -2,10 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Settings, Users, Plus, Trash2 } from "lucide-react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
-const NativeVoice = Capacitor.isNativePlatform()
-  ? registerPlugin("NativeVoice")
+const NativeAudioPermissions = Capacitor.isNativePlatform()
+  ? registerPlugin("NativeAudioPermissions")
   : null;
-const isNativeVoicePlatform = Capacitor.getPlatform() === "android" && !!NativeVoice;
+const isNativeVoicePlatform = Capacitor.getPlatform() === "android" && !!NativeAudioPermissions;
 
 function normalizePermissionState(state) {
   const value = String(state || "prompt").toLowerCase();
@@ -241,9 +241,9 @@ function getPermissionErrorMessage(error) {
 }
 
 async function queryNativeMicrophonePermission() {
-  if (!NativeVoice) return null;
+  if (!NativeAudioPermissions) return null;
   try {
-    const result = await NativeVoice.checkPermissions();
+    const result = await NativeAudioPermissions.checkPermissions();
     return normalizePermissionState(result?.microphone);
   } catch {
     return null;
@@ -251,9 +251,9 @@ async function queryNativeMicrophonePermission() {
 }
 
 async function requestNativeMicrophonePermission() {
-  if (!NativeVoice) return null;
+  if (!NativeAudioPermissions) return null;
   try {
-    const result = await NativeVoice.requestPermissions();
+    const result = await NativeAudioPermissions.requestPermissions();
     return normalizePermissionState(result?.microphone);
   } catch {
     return null;
@@ -261,9 +261,9 @@ async function requestNativeMicrophonePermission() {
 }
 
 async function openNativeAppSettings() {
-  if (!NativeVoice) return false;
+  if (!NativeAudioPermissions) return false;
   try {
-    await NativeVoice.openAppSettings();
+    await NativeAudioPermissions.openAppSettings();
     return true;
   } catch {
     return false;
@@ -1250,7 +1250,7 @@ export default function App() {
   }, [phase, currentUser]);
 
   useEffect(() => {
-    if (!isNativeVoicePlatform || !NativeVoice?.addListener) return;
+    if (!isNativeVoicePlatform || !NativeAudioPermissions?.addListener) return;
 
     let speechEndTimer = null;
     const clearSpeechEndTimer = () => {
@@ -1262,7 +1262,7 @@ export default function App() {
 
     const listeners = [];
     const register = async () => {
-      listeners.push(await NativeVoice.addListener("speechResult", ({ text }) => {
+      listeners.push(await NativeAudioPermissions.addListener("speechResult", ({ text }) => {
         const transcript = String(text || "").trim();
         clearSpeechEndTimer();
         setIsRecording(false);
@@ -1272,22 +1272,22 @@ export default function App() {
         }
         nativeSpeechResultHandlerRef.current?.(transcript);
       }));
-      listeners.push(await NativeVoice.addListener("speechError", ({ message }) => {
+      listeners.push(await NativeAudioPermissions.addListener("speechError", ({ message }) => {
         clearSpeechEndTimer();
         setIsRecording(false);
         setVoiceError(String(message || "语音识别失败"));
       }));
-      listeners.push(await NativeVoice.addListener("speechEnd", () => {
+      listeners.push(await NativeAudioPermissions.addListener("speechEnd", () => {
         clearSpeechEndTimer();
         speechEndTimer = setTimeout(() => setIsRecording(false), 1200);
       }));
-      listeners.push(await NativeVoice.addListener("ttsStart", () => {
+      listeners.push(await NativeAudioPermissions.addListener("ttsStart", () => {
         setIsSpeaking(true);
       }));
-      listeners.push(await NativeVoice.addListener("ttsEnd", () => {
+      listeners.push(await NativeAudioPermissions.addListener("ttsEnd", () => {
         setIsSpeaking(false);
       }));
-      listeners.push(await NativeVoice.addListener("ttsError", ({ message }) => {
+      listeners.push(await NativeAudioPermissions.addListener("ttsError", ({ message }) => {
         setIsSpeaking(false);
         setVoiceError(String(message || "原生语音播报失败"));
       }));
@@ -1374,7 +1374,7 @@ export default function App() {
             setTimeout(() => handleSend(transcript), 0);
           }
         };
-        await NativeVoice.startListening({ lang: teacher.lang || "zh-CN" });
+        await NativeAudioPermissions.startListening({ lang: teacher.lang || "zh-CN" });
         setIsRecording(true);
       } catch (error) {
         setVoiceError(error?.message || "启动原生语音识别失败");
