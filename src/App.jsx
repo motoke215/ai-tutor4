@@ -1574,6 +1574,7 @@ export default function App() {
   }, [teacher.lang, subject]);
 
   const handleAddUser = (username, avatar) => {
+    const newUser = { id: generateId(), username, avatar, createdAt: new Date().toISOString(), settings: { theme: themeId } };
     const updated = [...users, newUser];
     setUsers(updated);
     saveUsers(updated);
