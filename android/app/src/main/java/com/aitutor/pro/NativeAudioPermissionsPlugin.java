@@ -2,16 +2,17 @@ package com.aitutor.pro;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
-import android.content.pm.PackageManager;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -25,22 +26,14 @@ import com.getcapacitor.annotation.PermissionCallback;
 public class NativeAudioPermissionsPlugin extends Plugin {
     @PluginMethod
     public void checkPermissions(PluginCall call) {
-        JSObject result = new JSObject();
-        result.put("microphone", getMicrophoneState());
-        result.put("speaker", "granted");
-        result.put("speakerVisibleInSystem", false);
-        call.resolve(result);
+        call.resolve(buildPermissionResult());
     }
 
     @PluginMethod
     public void requestPermissions(PluginCall call) {
-        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED) {
-            JSObject result = new JSObject();
-            result.put("microphone", "granted");
-            result.put("speaker", "granted");
-            result.put("speakerVisibleInSystem", false);
-            call.resolve(result);
+        if (getPermissionState("microphone") == PermissionState.GRANTED
+                || ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            call.resolve(buildPermissionResult());
             return;
         }
 
@@ -58,16 +51,36 @@ public class NativeAudioPermissionsPlugin extends Plugin {
 
     @PermissionCallback
     private void permissionsCallback(PluginCall call) {
+        if (call != null) {
+            call.resolve(buildPermissionResult());
+        }
+    }
+
+    private JSObject buildPermissionResult() {
         JSObject result = new JSObject();
         result.put("microphone", getMicrophoneState());
         result.put("speaker", "granted");
         result.put("speakerVisibleInSystem", false);
-        call.resolve(result);
+        result.put("canOpenSettings", true);
+        return result;
     }
 
     private String getMicrophoneState() {
-        return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED ? "granted" : "prompt";
+        PermissionState state = getPermissionState("microphone");
+        if (state == PermissionState.GRANTED) {
+            return "granted";
+        }
+        if (state == PermissionState.DENIED) {
+            return "denied";
+        }
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
+            return "granted";
+        }
+        if (getActivity() != null && shouldShowRequestPermissionRationale("microphone")) {
+            return "prompt-with-rationale";
+        }
+        return "prompt";
     }
 }
 

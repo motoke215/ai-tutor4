@@ -301,7 +301,7 @@ function normalizeSiliconFlowVoiceName(voice) {
     "funaudiollm/cosyvoice2-0.5b:otetsu": "otetsu",
     "funaudiollm/cosyvoice2-0.5b:yunjian": "yunjian",
   };
-  return aliasMap[value] || String(voice || "").trim();
+  return aliasMap[value] || "";
 }
 function buildTutorSystemPrompt(subject, level, goal) {
   return `你正在辅导学生学习「${subject}」，学生水平：${level}，目标：${goal || "全面掌握"}。
@@ -672,7 +672,9 @@ function guessSiliconFlowVoice(text, lang) {
 async function synthesizeSpeech(config, text, lang) {
   if (!config.apiKey) throw new Error("请先配置硅基流动 API Key");
   const provider = MODEL_PROVIDERS.siliconflow;
+  const preferredVoice = normalizeSiliconFlowVoiceName(config.voiceName || guessSiliconFlowVoice(text, lang));
   const voicesToTry = Array.from(new Set([
+    preferredVoice,
     normalizeSiliconFlowVoiceName(guessSiliconFlowVoice(text, lang)),
     normalizeSiliconFlowVoiceName(String(lang || "").toLowerCase().startsWith("en") ? "anna" : "longxiaochun"),
     "longxiaochun",
@@ -707,7 +709,7 @@ async function synthesizeSpeech(config, text, lang) {
     }
   }
 
-  throw new Error(`语音播报失败 [400] ${lastErrorText.slice(0, 120)}`.trim() || "语音播报失败：当前 voice 参数不可用");
+  throw new Error("当前语音音色不可用，请改用默认音色或稍后重试");
 }
 
 function ModelConfigPanel({ T, configs, setConfigs, activeProvider, setActiveProvider, onClose }) {
@@ -1000,7 +1002,7 @@ function VoiceSettingsPanel({ T, voiceSettings, onUpdate, onClose, voiceCapabili
             <br />麦克风权限：{voicePermissionState === "granted" ? "已授权" : voicePermissionState === "denied" ? "已拒绝" : voicePermissionState === "prompt-with-rationale" ? "需要再次确认" : voicePermissionState === "unsupported" ? "当前环境不支持查询" : permissionPrompted ? "已请求，等待系统确认" : "待请求"}
             <br />权限列表状态：{voicePermissionState === "granted" || voicePermissionState === "denied" || voicePermissionState === "prompt-with-rationale" ? "系统已登记麦克风权限" : permissionPrompted ? "已触发申请，等待系统登记" : "尚未触发申请，所以权限页可能为空"}
             <br />扬声器说明：Android 系统通常不会单独显示“扬声器/喇叭”权限；播放语音默认不需要额外授权。
-            <br />如果系统权限页里没有任何可切换项，通常是因为当前安装包还没真正触发过运行时权限请求；请先点一次下方“请求麦克风权限”，完成系统弹窗后再回到权限页查看。
+            <br />如果权限页显示“未请求任何权限”，请先点一次下方“请求麦克风权限”。若你此前点过“拒绝”，系统可能不再弹窗，此时请直接点“打开系统权限设置”手动开启麦克风。
             {activeProvider === "minimax" && <><br />MiniMax 模型名称已按新版本保留，若旧接口报错可补填 Group ID。</>}
             {voiceCapability.reason && <><br />{voiceCapability.reason}</>}
           </div>
@@ -1180,11 +1182,11 @@ export default function App() {
         reason: !supportsSiliconVoice
           ? "请先配置硅基流动 API Key 以启用手机语音识别。"
           : permissionState === "denied"
-            ? "麦克风权限已被系统拒绝，请到系统设置 → 应用 → AI一对一私教 → 权限中开启麦克风。"
+            ? "麦克风权限已被系统拒绝。请点“打开系统权限设置”手动开启，部分安卓系统在拒绝后不会再次弹窗。"
             : permissionState === "granted"
               ? "麦克风权限已获取；安卓系统不会单独提供“扬声器”权限，语音播放默认可直接使用。"
               : permissionState === "prompt-with-rationale"
-                ? "系统建议再次请求麦克风权限；确认后权限页会显示“麦克风”。"
+                ? "系统建议再次请求麦克风权限；若仍无弹窗，请直接进入系统设置手动开启。"
                 : Capacitor.isNativePlatform()
                   ? "点击下方麦克风按钮后，系统会弹出麦克风授权；安卓不会单独提供“扬声器”权限。"
                   : "浏览器/系统不会显示“扬声器”权限，播放语音默认无需单独授权。",
@@ -1253,9 +1255,9 @@ export default function App() {
         setVoicePermissionState("denied");
         setVoiceCapability(prev => ({
           ...prev,
-          reason: "麦克风权限已被系统拒绝，请到系统设置 → 应用 → AI一对一私教 → 权限中开启麦克风。",
+          reason: "麦克风权限已被系统拒绝。请点“打开系统权限设置”手动开启，部分安卓系统在拒绝后不会再次弹窗。",
         }));
-        setVoiceError("系统已拒绝麦克风权限，请在系统设置中手动开启后再试");
+        setVoiceError("系统已拒绝麦克风权限，请点击“打开系统权限设置”并手动开启后再试");
         return false;
       }
       if (nativeRequest === "granted") {
@@ -1287,7 +1289,7 @@ export default function App() {
       setVoiceCapability(prev => ({
         ...prev,
         reason: permissionState === "denied"
-          ? "麦克风权限已被系统拒绝，请到系统设置 → 应用 → AI一对一私教 → 权限中开启麦克风。"
+          ? "麦克风权限已被系统拒绝。请点“打开系统权限设置”手动开启，部分安卓系统在拒绝后不会再次弹窗。"
           : prev.reason,
       }));
       setVoiceError(getPermissionErrorMessage(error));
