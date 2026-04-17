@@ -11,6 +11,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.util.Log;
 
 import androidx.core.content.ContextCompat;
 
@@ -34,6 +35,7 @@ import java.util.UUID;
     }
 )
 public class NativeVoicePlugin extends Plugin {
+    private static final String TAG = "NativeVoicePlugin";
     private TextToSpeech textToSpeech;
     private SpeechRecognizer speechRecognizer;
     private boolean ttsReady = false;
@@ -42,11 +44,13 @@ public class NativeVoicePlugin extends Plugin {
     @Override
     public void load() {
         super.load();
+        Log.d(TAG, "load called");
         initTextToSpeech();
     }
 
     @PluginMethod
     public void checkPermissions(PluginCall call) {
+        Log.d(TAG, "checkPermissions called");
         JSObject result = buildPermissionResult();
         result.put("ttsSupported", ttsReady);
         result.put("sttSupported", SpeechRecognizer.isRecognitionAvailable(getContext()));
@@ -55,6 +59,7 @@ public class NativeVoicePlugin extends Plugin {
 
     @PluginMethod
     public void requestPermissions(PluginCall call) {
+        Log.d(TAG, "requestPermissions called, state=" + getMicrophoneState());
         if (getPermissionState("microphone") == PermissionState.GRANTED
                 || ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             call.resolve(buildPermissionResult());
@@ -119,6 +124,7 @@ public class NativeVoicePlugin extends Plugin {
     public void startListening(PluginCall call) {
         String lang = call.getString("lang", "zh-CN");
         pendingSpeechLang = lang;
+        Log.d(TAG, "startListening called, state=" + getMicrophoneState());
 
         if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissionForAlias("microphone", call, "startListeningAfterPermissionCallback");
@@ -138,6 +144,7 @@ public class NativeVoicePlugin extends Plugin {
 
     @PermissionCallback
     private void permissionsCallback(PluginCall call) {
+        Log.d(TAG, "permissionsCallback result=" + getMicrophoneState());
         if (call != null) {
             call.resolve(buildPermissionResult());
         }

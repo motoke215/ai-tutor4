@@ -1303,6 +1303,7 @@ export default function App() {
 
   const requestMicrophonePermission = useCallback(async () => {
     setPermissionPrompted(true);
+    setVoiceError("");
     if (Capacitor.isNativePlatform()) {
       const nativeRequest = await requestNativeMicrophonePermission();
       if (nativeRequest === "denied") {
@@ -1316,10 +1317,19 @@ export default function App() {
       }
       if (nativeRequest === "granted") {
         setVoicePermissionState("granted");
+        setVoiceCapability(prev => ({
+          ...prev,
+          input: true,
+          output: true,
+          reason: "当前安卓版本已启用原生语音输入与原生朗读，麦克风权限已授予。",
+        }));
         return true;
       }
       if (isNativeVoicePlatform) {
         setVoicePermissionState(nativeRequest || "prompt");
+        if (nativeRequest !== "granted") {
+          setVoiceError("系统暂未授予麦克风权限，请点击“请求麦克风权限”后留意系统弹窗；若仍无弹窗，请直接打开系统权限设置手动开启。");
+        }
         return nativeRequest === "granted";
       }
     }
