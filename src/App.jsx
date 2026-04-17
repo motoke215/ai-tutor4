@@ -5,6 +5,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 const NativeAudioPermissions = Capacitor.isNativePlatform()
   ? registerPlugin("NativeAudioPermissions")
   : null;
+const isNativeVoicePlatform = Capacitor.getPlatform() === "android" && !!NativeAudioPermissions;
 
 function normalizePermissionState(state) {
   const value = String(state || "prompt").toLowerCase();
@@ -1154,6 +1155,7 @@ export default function App() {
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [sessionStats, setSessionStats] = useState({ turns: 0, startTime: null });
   const [recoveryProgress, setRecoveryProgress] = useState(null);
+  const nativeSpeechResultHandlerRef = useRef(null);
 
   const chatEndRef = useRef(null);
   const textareaRef = useRef(null);
@@ -1177,19 +1179,23 @@ export default function App() {
 
       setVoicePermissionState(permissionState);
       setVoiceCapability({
-        input: canRecord && supportsSiliconVoice,
-        output: canSpeak || supportsSiliconVoice,
-        reason: !supportsSiliconVoice
-          ? "请先配置硅基流动 API Key 以启用手机语音识别。"
-          : permissionState === "denied"
-            ? "麦克风权限已被系统拒绝。请点“打开系统权限设置”手动开启，部分安卓系统在拒绝后不会再次弹窗。"
-            : permissionState === "granted"
-              ? "麦克风权限已获取；安卓系统不会单独提供“扬声器”权限，语音播放默认可直接使用。"
-              : permissionState === "prompt-with-rationale"
-                ? "系统建议再次请求麦克风权限；若仍无弹窗，请直接进入系统设置手动开启。"
-                : Capacitor.isNativePlatform()
-                  ? "点击下方麦克风按钮后，系统会弹出麦克风授权；安卓不会单独提供“扬声器”权限。"
-                  : "浏览器/系统不会显示“扬声器”权限，播放语音默认无需单独授权。",
+        input: isNativeVoicePlatform || (canRecord && supportsSiliconVoice),
+        output: isNativeVoicePlatform || canSpeak || supportsSiliconVoice,
+        reason: isNativeVoicePlatform
+          ? permissionState === "granted"
+            ? "当前安卓版本已启用原生语音输入与原生朗读。"
+            : "当前安卓版本使用原生语音能力；点击麦克风会直接触发系统麦克风授权。"
+          : !supportsSiliconVoice
+            ? "请先配置硅基流动 API Key 以启用手机语音识别。"
+            : permissionState === "denied"
+              ? "麦克风权限已被系统拒绝。请点“打开系统权限设置”手动开启，部分安卓系统在拒绝后不会再次弹窗。"
+              : permissionState === "granted"
+                ? "麦克风权限已获取；安卓系统不会单独提供“扬声器”权限，语音播放默认可直接使用。"
+                : permissionState === "prompt-with-rationale"
+                  ? "系统建议再次请求麦克风权限；若仍无弹窗，请直接进入系统设置手动开启。"
+                  : Capacitor.isNativePlatform()
+                    ? "点击下方麦克风按钮后，系统会弹出麦克风授权；安卓不会单独提供“扬声器”权限。"
+                    : "浏览器/系统不会显示“扬声器”权限，播放语音默认无需单独授权。",
       });
 
       if (canSpeak) synthRef.current = window.speechSynthesis;
@@ -1244,8 +1250,56 @@ export default function App() {
   }, [phase, currentUser]);
 
   useEffect(() => {
-    savePermissionPrompted(permissionPrompted);
-  }, [permissionPrompted]);
+    if (!isNativeVoicePlatform || !NativeAudioPermissions?.addListener) return;
+
+    let speechEndTimer = null;
+    const clearSpeechEndTimer = () => {
+      if (speechEndTimer) {
+        clearTimeout(speechEndTimer);
+        speechEndTimer = null;
+      }
+    };
+
+    const listeners = [];
+    const register = async () => {
+      listeners.push(await NativeAudioPermissions.addListener("speechResult", ({ text }) => {
+        const transcript = String(text || "").trim();
+        clearSpeechEndTimer();
+        setIsRecording(false);
+        if (!transcript) {
+          setVoiceError("未识别到语音内容");
+          return;
+        }
+        nativeSpeechResultHandlerRef.current?.(transcript);
+      }));
+      listeners.push(await NativeAudioPermissions.addListener("speechError", ({ message }) => {
+        clearSpeechEndTimer();
+        setIsRecording(false);
+        setVoiceError(String(message || "语音识别失败"));
+      }));
+      listeners.push(await NativeAudioPermissions.addListener("speechEnd", () => {
+        clearSpeechEndTimer();
+        speechEndTimer = setTimeout(() => setIsRecording(false), 1200);
+      }));
+      listeners.push(await NativeAudioPermissions.addListener("ttsStart", () => {
+        setIsSpeaking(true);
+      }));
+      listeners.push(await NativeAudioPermissions.addListener("ttsEnd", () => {
+        setIsSpeaking(false);
+      }));
+      listeners.push(await NativeAudioPermissions.addListener("ttsError", ({ message }) => {
+        setIsSpeaking(false);
+        setVoiceError(String(message || "原生语音播报失败"));
+      }));
+    };
+
+    register();
+
+    return () => {
+      clearSpeechEndTimer();
+      listeners.forEach(listener => listener?.remove?.());
+    };
+  }, [teacher.lang, voiceSettings.voiceMode]);
 
   const requestMicrophonePermission = useCallback(async () => {
     setPermissionPrompted(true);
@@ -1262,6 +1316,11 @@ export default function App() {
       }
       if (nativeRequest === "granted") {
         setVoicePermissionState("granted");
+        return true;
+      }
+      if (isNativeVoicePlatform) {
+        setVoicePermissionState(nativeRequest || "prompt");
+        return nativeRequest === "granted";
       }
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -1305,6 +1364,25 @@ export default function App() {
     }
     const permissionGranted = await requestMicrophonePermission();
     if (!permissionGranted) return;
+
+    if (isNativeVoicePlatform) {
+      try {
+        setVoiceError("");
+        nativeSpeechResultHandlerRef.current = (transcript) => {
+          setInput(transcript);
+          if (voiceSettings.voiceMode === "push-to-talk") {
+            setTimeout(() => handleSend(transcript), 0);
+          }
+        };
+        await NativeAudioPermissions.startListening({ lang: teacher.lang || "zh-CN" });
+        setIsRecording(true);
+      } catch (error) {
+        setVoiceError(error?.message || "启动原生语音识别失败");
+        setIsRecording(false);
+      }
+      return;
+    }
+
     if (!modelConfigs.siliconflow?.apiKey) {
       setVoiceError("请先在设置里配置硅基流动 API Key，再使用语音识别");
       return;
@@ -1359,6 +1437,12 @@ export default function App() {
   };
 
   const stopRecording = () => {
+    if (isNativeVoicePlatform) {
+      NativeAudioPermissions?.stopListening?.().catch(() => {});
+      nativeSpeechResultHandlerRef.current = null;
+      setIsRecording(false);
+      return;
+    }
     mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
     setIsRecording(false);
@@ -1368,6 +1452,14 @@ export default function App() {
     if (!voiceSettings.enabled || !text) return;
     try {
       setVoiceError("");
+      if (isNativeVoicePlatform) {
+        await NativeAudioPermissions.speak({
+          text,
+          lang: teacher.lang || "zh-CN",
+          rate: voiceSettings.speed || 1.0,
+        });
+        return;
+      }
       if (modelConfigs.siliconflow?.apiKey) {
         setIsSpeaking(true);
         const blob = await synthesizeSpeech(modelConfigs.siliconflow, text, teacher.lang || "zh-CN");
@@ -1382,13 +1474,14 @@ export default function App() {
         audio.onerror = () => {
           URL.revokeObjectURL(objectUrl);
           setIsSpeaking(false);
-          setVoiceError("语音播报失败，已自动回退系统朗读");
           if (synthRef.current) {
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = teacher.lang || "zh-CN";
             utter.rate = voiceSettings.speed || 1.0;
             synthRef.current.speak(utter);
+            return;
           }
+          setVoiceError("当前语音音色不可用，请改用默认音色或稍后重试");
         };
         await audio.play();
         return;
@@ -1420,6 +1513,9 @@ export default function App() {
   }, [voiceSettings, teacher.lang, modelConfigs.siliconflow]);
 
   const stopSpeaking = () => {
+    if (isNativeVoicePlatform) {
+      NativeAudioPermissions?.stopSpeak?.().catch(() => {});
+    }
     synthRef.current?.cancel();
     audioPlayerRef.current?.pause();
     if (audioPlayerRef.current) audioPlayerRef.current.currentTime = 0;
@@ -1473,8 +1569,11 @@ export default function App() {
     }
   }, [modelConfigs, activeProvider, mastery, voiceSettings.autoSpeak, speakText]);
 
+  useEffect(() => {
+    nativeSpeechResultHandlerRef.current = null;
+  }, [teacher.lang, subject]);
+
   const handleAddUser = (username, avatar) => {
-    const newUser = { id: generateId(), username, avatar, createdAt: new Date().toISOString(), settings: { theme: themeId } };
     const updated = [...users, newUser];
     setUsers(updated);
     saveUsers(updated);
@@ -1718,9 +1817,9 @@ export default function App() {
       <div style={{ padding: "10px 16px 16px", borderTop: `1px solid ${T.border}`, maxWidth: 780, width: "100%", margin: "0 auto", flexShrink: 0, position: "relative", zIndex: 10 }}>
         {isSpeaking && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: T.accent }}><div style={{ width: 8, height: 8, borderRadius: "50%", background: T.accent, animation: "pulse 1s infinite" }} />{teacher.name}正在朗读… <button onClick={stopSpeaking} style={{ background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>停止</button></div>}
         {voiceError && <div style={{ marginBottom: 8, fontSize: 12, color: "#f87171" }}>{voiceError}</div>}
-        {voiceSettings.enabled && modelConfigs.siliconflow?.apiKey && voicePermissionState !== "granted" && (
+        {voiceSettings.enabled && voicePermissionState !== "granted" && (
           <div style={{ marginBottom: 8, fontSize: 12, color: T.textMuted }}>
-            麦克风尚未授权。点击左侧麦克风会触发系统授权；安卓系统不会显示单独的“扬声器权限”。
+            麦克风尚未授权。首次安装后请先点击左侧麦克风触发系统申请；若系统已拒绝且权限页仍显示“未请求任何权限”，请卸载旧版本后安装最新 APK 再试。
           </div>
         )}
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
