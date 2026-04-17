@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI一对一私教</string>
+    <string name="title_activity_main">AI一对一私教</string>
+    <string name="package_name">com.aitutor.pro</string>
+    <string name="custom_url_scheme">com.aitutor.pro</string>
+</resources>

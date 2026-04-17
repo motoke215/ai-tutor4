@@ -1,0 +1,9 @@
+{
+  "appId": "com.aitutor.pro",
+  "appName": "AI一对一私教",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
